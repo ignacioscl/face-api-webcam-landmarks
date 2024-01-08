@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="face-api.js"></script>
+  <script src="js/commons.js"></script>
+  <script src="js/faceDetectionControls.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.css">
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="center-content page-container">
+
+    <div class="progress" id="loader">
+      <div class="indeterminate"></div>
+    </div>
+    <div style="position: relative" class="margin">
+      <video onloadedmetadata="onPlay(this)" id="inputVideo" autoplay muted playsinline></video>
+      <canvas id="overlay" />
+    </div>
+
+
+
+
+
+
+  </body>
+
+  <script>
+    let forwardTimes = []
+    let withBoxes = true
+
+    function onChangeHideBoundingBoxes(e) {
+      withBoxes = !$(e.target).prop('checked')
+    }
+
+    let lastDetectionTime = 0;  // Variable para almacenar el tiempo de la última detección
+    let fl=0;
+    async function onPlay() {
+      const videoEl = $('#inputVideo').get(0)
+
+      if(videoEl.paused || videoEl.ended || !isFaceDetectionModelLoaded())
+        return setTimeout(() => onPlay())
+
+
+      const options = getFaceDetectorOptions()
+
+      const ts = Date.now()
+
+      const result = await faceapi.detectSingleFace(videoEl, options).withFaceLandmarks().withFaceExpressions().withFaceDescriptor()
+
+
+      const currentTime = Date.now();
+
+      if (result) {
+        lastDetectionTime = currentTime;  // Actualizar el tiempo de la última detección
+
+        const canvas = $('#overlay').get(0)
+        const dims = faceapi.matchDimensions(canvas, videoEl, true)
+        const resizedResult = faceapi.resizeResults(result, dims)
+
+        /*if (withBoxes) {
+          faceapi.draw.drawDetections(canvas, resizedResult)
+        }*/
+        faceapi.draw.drawFaceLandmarks(canvas, resizedResult)
+        //faceapi.draw.drawFaceExpressions(canvas, resizedResult, minConfidence)
+
+        console.log("isMouthOpen:" + isMouthOpen(result.expressions));
+
+        if (isMouthOpen(result.expressions)) {
+          // Capturar una instantánea del video cuando la persona está sonriendo
+          capturarInstantanea(videoEl);
+        }
+        if (fl==0) {
+          fl=1;
+          console.log(result)
+        }
+      } else {
+        if (currentTime - lastDetectionTime > 5000) {
+          const canvas = $('#overlay').get(0)
+          const context = canvas.getContext('2d');
+          // Limpiar el canvas
+          context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      setTimeout(() => onPlay())
+    }
+    
+    async function run() {
+      // load face detection and face landmark models
+      await changeFaceDetector(TINY_FACE_DETECTOR)
+      await faceapi.loadFaceLandmarkModel('/')
+      await faceapi.loadFaceExpressionModel('/')
+
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('/');
+      await faceapi.nets.faceRecognitionNet.loadFromUri('/');
+
+      //changeInputSize(224)
+
+      // try to access users webcam and stream the images
+      // to the video element
+      const stream = await navigator.mediaDevices.getUserMedia({ video: {} })
+      const videoEl = $('#inputVideo').get(0)
+      videoEl.srcObject = stream
+    }
+
+    function updateResults() {}
+
+    $(document).ready(function() {
+      
+      run()
+    })
+
+    
+function capturarInstantanea(videoEl) {
+  const canvas = document.createElement('canvas');
+  canvas.width = videoEl.videoWidth;
+  canvas.height = videoEl.videoHeight;
+  const context = canvas.getContext('2d');
+  context.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+  // Puedes usar la imagen en el canvas como desees
+  const imagenDataUrl = canvas.toDataURL('image/png');
+  console.log('Instantánea capturada:', imagenDataUrl);
+}
+  </script>
+</body>
+</html>
